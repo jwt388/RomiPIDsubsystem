@@ -38,12 +38,12 @@ public final class Constants {
     public static final double kminPosition = 0.0;
     public static final double kBackPosition = 0.2; 
     public static final double kFwdPosition = 0.8;
-    public static final double kPosIncrement = 0.1;
+    public static final double kPosIncrement = 0.05;
     public static final double kmaxPosition = 1.0;
 
     // Feedforward 
     public static final double kSVolts = 0.05; // Static gain
-    public static final double kVVoltSecondPerMeter = 1.4; // Velocity gain
+    public static final double kVVoltSecondPerMeter = 1.0; // Velocity gain
     public static final double kAVoltSecondSquaredPerMeter = 0.0; // Acceleration gain
     // public static final double kGVolts = 0; // Gravity gain
     // public static final double kVVoltSecondPerRad = 0.5; // Velocity gain

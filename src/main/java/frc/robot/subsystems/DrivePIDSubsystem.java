@@ -51,6 +51,8 @@ public class DrivePIDSubsystem extends ProfiledPIDSubsystem {
 
   // Set up the BuiltInAccelerometer
   private final BuiltInAccelerometer m_accelerometer = new BuiltInAccelerometer();
+  
+  private OnBoardIO m_onboardIO;
 
   private double m_goalposition;
 
@@ -64,7 +66,7 @@ public class DrivePIDSubsystem extends ProfiledPIDSubsystem {
   private static NetworkTable m_table;
    
   /** Creates a new Drivetrain. */
-  public DrivePIDSubsystem() {
+  public DrivePIDSubsystem(OnBoardIO onboardIO) {
     super(
         new ProfiledPIDController(
             Constants.kPDriveProfiled,
@@ -86,10 +88,12 @@ public class DrivePIDSubsystem extends ProfiledPIDSubsystem {
     m_leftEncoder.setDistancePerPulse(2 * Math.PI * Constants.kWheelRadiusMeters / Constants.kEncoderResolution);
     m_rightEncoder.setDistancePerPulse(2 * Math.PI * Constants.kWheelRadiusMeters / Constants.kEncoderResolution);
    
+    m_onboardIO = onboardIO;
+
     resetPosition();
     m_gyro.reset();
 
-    // Start arm at rest in neutral position
+    // Start at rest in neutral position
     setGoal(Constants.kStartPosition);
 
     setupShuffleboard();
@@ -99,7 +103,7 @@ public class DrivePIDSubsystem extends ProfiledPIDSubsystem {
   @Override
   public void useOutput(double output, TrapezoidProfile.State setpoint) {
     // Calculate the feedforward from the setpoint
-    double feedforward = m_feedforward.calculate(setpoint.position, setpoint.velocity);
+    double feedforward = m_feedforward.calculate(setpoint.velocity);
     // Add the feedforward to the PID output to get the motor output
     m_leftMotor.set(output + feedforward);
     m_rightMotor.set(output + feedforward);
@@ -115,40 +119,48 @@ public class DrivePIDSubsystem extends ProfiledPIDSubsystem {
   /** Enables the PID control. Resets the controller. */
   public void enable() {
 
-    // Override PID and Feedforward parameters from Shuffleboard
-    if (Constants.enablePIDTune) {
-      DataLogManager.log("Update parameters");
+    // Don't enable if already enabled since this may cause control transients
+    if (!m_enabled) {
+      // Override PID and Feedforward parameters from Shuffleboard
+      if (Constants.enablePIDTune) {
+        DataLogManager.log("Update parameters");
 
-      m_table = inst.getTable("Shuffleboard/PID Tuning");
-      
-      m_controller.setP(m_table.getEntry("kP").getDouble(Constants.kPDriveProfiled));
-      m_controller.setI(m_table.getEntry("kI").getDouble(Constants.kIDriveProfiled));
-      m_controller.setD(m_table.getEntry("kD").getDouble(Constants.kDDriveProfiled));
-      double newVmax = m_table.getEntry("Vmax").getDouble(Constants.kMaxSpeedMetersPerSecond);
-      double newAmax = m_table.getEntry("Amax").getDouble(Constants.kMaxAccelMetersPerSecondSquared);
-      m_controller.setConstraints(new TrapezoidProfile.Constraints(newVmax, newAmax));
+        m_table = inst.getTable("Shuffleboard/PID Tuning");
+        
+        m_controller.setP(m_table.getEntry("kP").getDouble(Constants.kPDriveProfiled));
+        m_controller.setI(m_table.getEntry("kI").getDouble(Constants.kIDriveProfiled));
+        m_controller.setD(m_table.getEntry("kD").getDouble(Constants.kDDriveProfiled));
+        double newVmax = m_table.getEntry("Vmax").getDouble(Constants.kMaxSpeedMetersPerSecond);
+        double newAmax = m_table.getEntry("Amax").getDouble(Constants.kMaxAccelMetersPerSecondSquared);
+        m_controller.setConstraints(new TrapezoidProfile.Constraints(newVmax, newAmax));
 
-      double kS = m_table.getEntry("kS").getDouble(Constants.kSVolts);
-      double kV = m_table.getEntry("kV").getDouble(Constants.kVVoltSecondPerMeter);
-      double kA = m_table.getEntry("kA").getDouble(Constants.kAVoltSecondSquaredPerMeter);
-      // double kG = m_table.getEntry("kG").getDouble(Constants.kGVolts);
+        double kS = m_table.getEntry("kS").getDouble(Constants.kSVolts);
+        double kV = m_table.getEntry("kV").getDouble(Constants.kVVoltSecondPerMeter);
+        double kA = m_table.getEntry("kA").getDouble(Constants.kAVoltSecondSquaredPerMeter);
+        // double kG = m_table.getEntry("kG").getDouble(Constants.kGVolts);
 
-      m_feedforward = new SimpleMotorFeedforward(kS, kV, kA);
+        m_feedforward = new SimpleMotorFeedforward(kS, kV, kA);
+        m_onboardIO.setRedLed(true);
 
+      }
+
+      m_enabled = true;
+      m_controller.reset(getMeasurement());
+
+      DataLogManager.log("PID control enabled");
     }
-
-    m_enabled = true;
-    m_controller.reset(getMeasurement());
-
-    DataLogManager.log("PID control enabled");
 
   }
   
   /** Disables the PID control. Sets output to zero. */
   public void disable() {
-    m_enabled = false;
+
+    // Set goal to current position to minimize movement on re-enable and reset output
+    setGoal(getMeasurement()); 
     useOutput(0, new State());
 
+    m_enabled = false;
+    m_onboardIO.setRedLed(false);
     DataLogManager.log("PID control disabled");
 
   }
@@ -390,16 +402,6 @@ public class DrivePIDSubsystem extends ProfiledPIDSubsystem {
      
     }
 
-        
-    // Create a tab for the Odometry and Field
-    /*     ShuffleboardTab m_fieldTab = Shuffleboard.getTab("Field");
-    m_fieldTab
-        .add("Field", m_field);
-    SmartDashboard.putData(m_field);
-
-    ShuffleboardLayout commands = m_fieldTab.getLayout("Commands",BuiltInLayouts.kList);
-    commands.add(new InstantCommand (() ->  resetOdometry())); */
-
   } 
 
   public void updateShuffleboard() {
@@ -410,6 +412,8 @@ public class DrivePIDSubsystem extends ProfiledPIDSubsystem {
     SmartDashboard.putNumber("Left Rate", m_leftEncoder.getRate());
     SmartDashboard.putNumber("Right Rate", m_rightEncoder.getRate());
     SmartDashboard.putNumber("Average Rate", (m_leftEncoder.getRate() + m_rightEncoder.getRate())/2);
+
+    SmartDashboard.putBoolean("Drive Enabled", m_enabled);
 
     // Update tuning debug if enabled
     if (Constants.enablePIDTune) {

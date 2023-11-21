@@ -22,8 +22,8 @@ import edu.wpi.first.wpilibj2.command.Commands;
  */
 public class RobotContainer {
   // The robot's subsystems and commands are defined here...
-  private final DrivePIDSubsystem m_driveSubsystem = new DrivePIDSubsystem();
   public final OnBoardIO m_onboardIO = new OnBoardIO(ChannelMode.OUTPUT, ChannelMode.OUTPUT); // Enable LEDs
+  private final DrivePIDSubsystem m_driveSubsystem = new DrivePIDSubsystem(m_onboardIO);
 
   // Assumes a gamepad plugged into channel 0
   private final CommandXboxController m_driverController = new CommandXboxController(0);
@@ -57,7 +57,6 @@ public class RobotContainer {
             () -> {
               m_driveSubsystem.setGoal(Constants.kFwdPosition);
               m_driveSubsystem.enable();
-              m_onboardIO.setRedLed(true);
 
             },
             m_driveSubsystem));
@@ -69,9 +68,21 @@ public class RobotContainer {
         Commands.runOnce(
             () -> {
               m_driveSubsystem.setGoal(Constants.kBackPosition);
+              m_driveSubsystem.enable();
             },
             m_driveSubsystem));
 
+    // Move to start position when Y is pressed.
+    m_driverController
+    .y()
+    .onTrue(
+        Commands.runOnce(
+            () -> {
+              m_driveSubsystem.setGoal(Constants.kStartPosition);
+              m_driveSubsystem.enable();
+            },
+            m_driveSubsystem));
+            
     // Shift position back a small amount when the POV Down is pressed.
     m_driverController
     .povDown()
@@ -79,6 +90,7 @@ public class RobotContainer {
         Commands.runOnce(
           () -> {
             m_driveSubsystem.setGoal(m_driveSubsystem.decreasedGoal());
+            m_driveSubsystem.enable();
           },
           m_driveSubsystem));
 
@@ -89,6 +101,7 @@ public class RobotContainer {
           Commands.runOnce(
             () -> {
               m_driveSubsystem.setGoal(m_driveSubsystem.increasedGoal());
+              m_driveSubsystem.enable();
             },
             m_driveSubsystem));
 
@@ -96,14 +109,23 @@ public class RobotContainer {
     //   Should only be used when are is in neutral position.
     m_driverController.x().onTrue(Commands.runOnce(m_driveSubsystem::resetPosition));
 
-    // Disable the arm controller when Y is pressed.
+    // Disable the drive controller when left bumper is pressed.
     m_driverController
-    .y()
+    .leftBumper()
     .onTrue(
         Commands.runOnce(
             () -> {
               m_driveSubsystem.disable();
-              m_onboardIO.setRedLed(false);
+            },
+            m_driveSubsystem));
+            
+    // Enable the drive controller when right bumper is pressed.
+    m_driverController
+    .rightBumper()
+    .onTrue(
+        Commands.runOnce(
+            () -> {
+              m_driveSubsystem.enable();
             },
             m_driveSubsystem));
 
@@ -117,7 +139,6 @@ public class RobotContainer {
    */
   public void disablePIDSubsystems() {
     m_driveSubsystem.disable();
-    m_onboardIO.setRedLed(false);
   }
 
   /**
